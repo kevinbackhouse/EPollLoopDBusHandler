@@ -91,9 +91,7 @@ public:
     parse_(DBusMessage::parseLE(message_))
   {}
 
-  virtual ~DBusHandler() {
-    close(sock_);
-  }
+  virtual ~DBusHandler();
 
   // Open a UNIX domain socket to connect to message bus.
   static int open_dbus_socket(const char* socketpath);

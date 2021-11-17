@@ -54,6 +54,10 @@ DBusHandler::SendBuf::~SendBuf() {
   free(buf_);
 }
 
+DBusHandler::~DBusHandler() {
+  close(sock_);
+}
+
 int DBusHandler::open_dbus_socket(const char* socketpath) {
   sockaddr_un address;
   memset(&address, 0, sizeof(address));
