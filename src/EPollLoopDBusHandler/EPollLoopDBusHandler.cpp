@@ -442,7 +442,7 @@ void DBusHandler::send_hello(hello_cb_t cb) {
     _s("org.freedesktop.DBus"),
     _s("org.freedesktop.DBus"),
     _s("Hello"),
-    [this, cb](const DBusMessage& message, bool isError) -> int {
+    [cb](const DBusMessage& message, bool isError) -> int {
       if (isError) {
         throw Error("Received error reply to hello message.");
       }

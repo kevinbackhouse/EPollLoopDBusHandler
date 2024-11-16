@@ -186,8 +186,6 @@ public:
 // sequence. This class handles the auth sequence, then replaces itself
 // with a DBusHandler (by overriding the `getNextHandler()` method).
 class DBusAuthHandler : public EPollHandlerInterface {
-  EPollLoop& loop_;
-
   // The UID to send in the initial AUTH message.
   const uid_t auth_uid_;
 
@@ -208,10 +206,9 @@ class DBusAuthHandler : public EPollHandlerInterface {
 
 public:
   DBusAuthHandler(
-    EPollLoop& loop, uid_t auth_uid, DBusHandler* handler
+    uid_t auth_uid, DBusHandler* handler
   ) :
     EPollHandlerInterface(handler->getSock()),
-    loop_(loop),
     auth_uid_(auth_uid),
     handler_(handler)
   {}
