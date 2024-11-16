@@ -13,52 +13,43 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with EPollLoopDBusHandler.  If not, see <https://www.gnu.org/licenses/>.
+// along with EPollLoopDBusHandler.  If not, see
+// <https://www.gnu.org/licenses/>.
 
-#include <sys/un.h>
+#include "EPollLoopDBusHandler.hpp"
 #include <assert.h>
-#include <string.h>
-#include <stdlib.h>
+#include <dbus_serialize.hpp>
+#include <dbus_utils.hpp>
 #include <errno.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <stdexcept>
-#include <dbus_utils.hpp>
-#include <dbus_serialize.hpp>
-#include "EPollLoopDBusHandler.hpp"
+#include <stdlib.h>
+#include <string.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 // D-Bus messages are expected to be 8-byte aligned.
 const size_t dbus_alignment = sizeof(uint64_t);
 
-DBusHandler::SendBuf::SendBuf(size_t bufsize) :
-  buf_(static_cast<char*>(malloc(bufsize))),
-  bufsize_(bufsize),
-  pos_(0)
-{
+DBusHandler::SendBuf::SendBuf(size_t bufsize)
+    : buf_(static_cast<char *>(malloc(bufsize))), bufsize_(bufsize), pos_(0) {
   if (!buf_) {
     throw std::bad_alloc();
   }
 }
 
-DBusHandler::SendBuf::SendBuf(SendBuf&& that) :
-  buf_(that.buf_),
-  bufsize_(that.bufsize_),
-  pos_(that.pos_)
-{
+DBusHandler::SendBuf::SendBuf(SendBuf &&that)
+    : buf_(that.buf_), bufsize_(that.bufsize_), pos_(that.pos_) {
   that.buf_ = 0;
   that.bufsize_ = 0;
   that.pos_ = 0;
 }
 
-DBusHandler::SendBuf::~SendBuf() {
-  free(buf_);
-}
+DBusHandler::SendBuf::~SendBuf() { free(buf_); }
 
-DBusHandler::~DBusHandler() {
-  close(sock_);
-}
+DBusHandler::~DBusHandler() { close(sock_); }
 
-int DBusHandler::open_dbus_socket(const char* socketpath) {
+int DBusHandler::open_dbus_socket(const char *socketpath) {
   sockaddr_un address;
   memset(&address, 0, sizeof(address));
   address.sun_family = AF_UNIX;
@@ -69,7 +60,7 @@ int DBusHandler::open_dbus_socket(const char* socketpath) {
     throw ErrorWithErrno(_s("Could not open socket: ") + _s(socketpath));
   }
 
-  if (connect(fd.get(), (sockaddr*)(&address), sizeof(address)) < 0) {
+  if (connect(fd.get(), (sockaddr *)(&address), sizeof(address)) < 0) {
     throw ErrorWithErrno(_s("Could not connect to socket: ") + _s(socketpath));
   }
 
@@ -80,24 +71,19 @@ int DBusHandler::init() noexcept {
   try {
     accept();
     return 0;
-  } catch (ErrorWithErrno& e) {
+  } catch (ErrorWithErrno &e) {
     const int err = e.getErrno();
     char errmsg[128];
-    snprintf(
-      errmsg, sizeof(errmsg),
-      "Exception caught in DBusHandler::init(): %s (%s)",
-      e.what(), strerror(err)
-    );
+    snprintf(errmsg, sizeof(errmsg),
+             "Exception caught in DBusHandler::init(): %s (%s)", e.what(),
+             strerror(err));
     logerror(errmsg);
-  } catch (std::exception& e) {
+  } catch (std::exception &e) {
     char errmsg[128];
-    snprintf(
-      errmsg, sizeof(errmsg),
-      "Exception caught in DBusHandler::init(): %s",
-      e.what()
-    );
+    snprintf(errmsg, sizeof(errmsg),
+             "Exception caught in DBusHandler::init(): %s", e.what());
     logerror(errmsg);
-  } catch(...) {
+  } catch (...) {
     logerror("Unknown exception caught in DBusHandler::process_message()");
   }
 
@@ -114,7 +100,7 @@ int DBusHandler::process_read() noexcept {
 
     const size_t recvoffset = savedalign_ + savedsize_;
     const ssize_t recvsize =
-      recv(sock_, buf + recvoffset, sizeof(buf) - recvoffset, 0);
+        recv(sock_, buf + recvoffset, sizeof(buf) - recvoffset, 0);
 
     if (recvsize == 0) {
       // Peer has closed the connection.
@@ -131,11 +117,8 @@ int DBusHandler::process_read() noexcept {
       }
 
       char errmsg[128];
-      snprintf(
-        errmsg, sizeof(errmsg),
-        "Error in DBusHandler::process_read(): %s",
-        strerror(err)
-      );
+      snprintf(errmsg, sizeof(errmsg),
+               "Error in DBusHandler::process_read(): %s", strerror(err));
       logerror(errmsg);
       disconnect();
       return -1;
@@ -154,13 +137,11 @@ int DBusHandler::process_read() noexcept {
 
 int DBusHandler::process_write() noexcept {
   while (!sendqueue_.empty()) {
-    SendBuf& buf = sendqueue_.front();
+    SendBuf &buf = sendqueue_.front();
     while (buf.remaining() > 0) {
-      const ssize_t wr = send(
-        sock_, buf.curr(), buf.remaining(), MSG_NOSIGNAL
-      );
+      const ssize_t wr = send(sock_, buf.curr(), buf.remaining(), MSG_NOSIGNAL);
 
-      if (wr < 0)  {
+      if (wr < 0) {
         const int err = errno;
         if (err == EAGAIN || err == EWOULDBLOCK) {
           // The socket buffer is full, so we need to wait for epoll
@@ -169,11 +150,8 @@ int DBusHandler::process_write() noexcept {
         }
 
         char errmsg[128];
-        snprintf(
-          errmsg, sizeof(errmsg),
-          "Error in DBusHandler::process_write(): %s",
-          strerror(err)
-        );
+        snprintf(errmsg, sizeof(errmsg),
+                 "Error in DBusHandler::process_write(): %s", strerror(err));
         logerror(errmsg);
 
         disconnect();
@@ -187,37 +165,31 @@ int DBusHandler::process_write() noexcept {
   return 0;
 }
 
-int DBusHandler::parse_message_noexcept(
-  char* buf, size_t pos, size_t remaining
-) noexcept {
+int DBusHandler::parse_message_noexcept(char *buf, size_t pos,
+                                        size_t remaining) noexcept {
   try {
     return parse_message(buf, pos, remaining);
-  } catch (ErrorWithErrno& e) {
+  } catch (ErrorWithErrno &e) {
     const int err = e.getErrno();
     char errmsg[128];
-    snprintf(
-      errmsg, sizeof(errmsg),
-      "Exception caught in DBusHandler::process_read(): %s (%s)",
-      e.what(), strerror(err)
-    );
+    snprintf(errmsg, sizeof(errmsg),
+             "Exception caught in DBusHandler::process_read(): %s (%s)",
+             e.what(), strerror(err));
     logerror(errmsg);
     return -1;
-  } catch (std::exception& e) {
+  } catch (std::exception &e) {
     char errmsg[128];
-    snprintf(
-      errmsg, sizeof(errmsg),
-      "Exception caught in DBusHandler::process_read(): %s",
-      e.what()
-    );
+    snprintf(errmsg, sizeof(errmsg),
+             "Exception caught in DBusHandler::process_read(): %s", e.what());
     logerror(errmsg);
     return -1;
-  } catch(...) {
+  } catch (...) {
     logerror("Unknown exception caught in DBusHandler::process_read()");
     return -1;
   }
 }
 
-int DBusHandler::parse_message(char* buf, size_t pos, size_t remaining) {
+int DBusHandler::parse_message(char *buf, size_t pos, size_t remaining) {
   while (true) {
     const size_t required = parse_.maxRequiredBytes();
     if (required == 0) {
@@ -230,7 +202,7 @@ int DBusHandler::parse_message(char* buf, size_t pos, size_t remaining) {
       parse_.reset(DBusMessage::parseLE(message_));
       // Make sure that the memory is aligned for the next message.
       if (pos % dbus_alignment != 0) {
-        memmove(buf, buf+pos, remaining);
+        memmove(buf, buf + pos, remaining);
         pos = 0;
       }
       // Parse the next message.
@@ -292,7 +264,11 @@ int DBusHandler::process_message() {
 
 int DBusHandler::dispatch_reply(bool isError) {
   const serialNumber_t replySerial =
-    message_->getHeader_lookupField(MSGHDR_REPLY_SERIAL).getValue()->toUint32().getValue();;
+      message_->getHeader_lookupField(MSGHDR_REPLY_SERIAL)
+          .getValue()
+          ->toUint32()
+          .getValue();
+  ;
   auto i = reply_callbacks_.find(replySerial);
   if (i != reply_callbacks_.end()) {
     // Call the callback function.
@@ -308,17 +284,15 @@ int DBusHandler::dispatch_reply(bool isError) {
     return 0;
   } else {
     char errmsg[128];
-    snprintf(
-      errmsg, sizeof(errmsg),
-      "Unknown reply serial number in DBusHandler::dispatch_reply(): %u",
-      replySerial
-    );
+    snprintf(errmsg, sizeof(errmsg),
+             "Unknown reply serial number in DBusHandler::dispatch_reply(): %u",
+             replySerial);
     logerror(errmsg);
     return -1;
   }
 }
 
-void DBusHandler::sendbuf(SendBuf&& buf) {
+void DBusHandler::sendbuf(SendBuf &&buf) {
   if (!sendqueue_.empty()) {
     // `sendqueue_` isn't empty, which means two things:
     //
@@ -355,7 +329,7 @@ void DBusHandler::sendbuf(SendBuf&& buf) {
   }
 }
 
-void DBusHandler::send_message(const DBusMessage& message) {
+void DBusHandler::send_message(const DBusMessage &message) {
   std::vector<uint32_t> arraySizes;
   SerializerInitArraySizes s0(arraySizes);
   message.serialize(s0);
@@ -368,29 +342,15 @@ void DBusHandler::send_message(const DBusMessage& message) {
   sendbuf(std::move(buf));
 }
 
-void DBusHandler::send_call(
-  std::unique_ptr<DBusMessageBody>&& body,
-  std::string&& path,
-  std::string&& interface,
-  std::string&& destination,
-  std::string&& member,
-  reply_cb_t cb,
-  const MessageFlags flags
-) {
+void DBusHandler::send_call(std::unique_ptr<DBusMessageBody> &&body,
+                            std::string &&path, std::string &&interface,
+                            std::string &&destination, std::string &&member,
+                            reply_cb_t cb, const MessageFlags flags) {
   const uint32_t serialNumber = serialNumber_++;
 
-  std::unique_ptr<DBusMessage> message(
-    mk_dbus_method_call_msg(
-      serialNumber,
-      std::move(body),
-      std::move(path),
-      std::move(interface),
-      std::move(destination),
-      std::move(member),
-      0,
-      flags
-    )
-  );
+  std::unique_ptr<DBusMessage> message(mk_dbus_method_call_msg(
+      serialNumber, std::move(body), std::move(path), std::move(interface),
+      std::move(destination), std::move(member), 0, flags));
 
   send_message(*message);
 
@@ -398,64 +358,44 @@ void DBusHandler::send_call(
 }
 
 void DBusHandler::send_reply(
-  const uint32_t replySerialNumber, // serial number that we are replying to
-  std::unique_ptr<DBusMessageBody>&& body,
-  std::string&& destination
-) {
+    const uint32_t replySerialNumber, // serial number that we are replying to
+    std::unique_ptr<DBusMessageBody> &&body, std::string &&destination) {
   const uint32_t serialNumber = serialNumber_++;
 
   std::unique_ptr<DBusMessage> message(
-    mk_dbus_method_reply_msg(
-      serialNumber,
-      replySerialNumber,
-      std::move(body),
-      std::move(destination)
-    )
-  );
+      mk_dbus_method_reply_msg(serialNumber, replySerialNumber, std::move(body),
+                               std::move(destination)));
 
   send_message(*message);
 }
 
 void DBusHandler::send_error_reply(
-  const uint32_t replySerialNumber, // serial number that we are replying to
-  std::string&& destination,
-  std::string&& errmsg
-) {
+    const uint32_t replySerialNumber, // serial number that we are replying to
+    std::string &&destination, std::string &&errmsg) {
   const uint32_t serialNumber = serialNumber_++;
 
-  std::unique_ptr<DBusMessage> message(
-    mk_dbus_method_error_reply_msg(
-      serialNumber,
-      replySerialNumber,
-      std::move(destination),
-      std::move(errmsg)
-    )
-  );
+  std::unique_ptr<DBusMessage> message(mk_dbus_method_error_reply_msg(
+      serialNumber, replySerialNumber, std::move(destination),
+      std::move(errmsg)));
 
   send_message(*message);
 }
 
 void DBusHandler::send_hello(hello_cb_t cb) {
-  send_call(
-    DBusMessageBody::mk0(),
-    _s("/org/freedesktop/DBus"),
-    _s("org.freedesktop.DBus"),
-    _s("org.freedesktop.DBus"),
-    _s("Hello"),
-    [cb](const DBusMessage& message, bool isError) -> int {
-      if (isError) {
-        throw Error("Received error reply to hello message.");
-      }
-      const std::string& busname =
-        message.getBody().getElement(0)->toString().getValue();
-      return cb(busname);
-    }
-  );
+  send_call(DBusMessageBody::mk0(), _s("/org/freedesktop/DBus"),
+            _s("org.freedesktop.DBus"), _s("org.freedesktop.DBus"), _s("Hello"),
+            [cb](const DBusMessage &message, bool isError) -> int {
+              if (isError) {
+                throw Error("Received error reply to hello message.");
+              }
+              const std::string &busname =
+                  message.getBody().getElement(0)->toString().getValue();
+              return cb(busname);
+            });
 }
 
-static size_t write_string(
-  char* buf, size_t pos, size_t bufsize, const char* str
-) {
+static size_t write_string(char *buf, size_t pos, size_t bufsize,
+                           const char *str) {
   const size_t len = strlen(str);
   if (len > bufsize - pos) {
     throw std::out_of_range("Error in write_string()");
@@ -495,11 +435,10 @@ int DBusAuthHandler::init() noexcept {
 
 int DBusAuthHandler::process_write() noexcept {
   while (sendremaining_ > 0) {
-    const ssize_t wr = send(
-      sock_, sendbuf_ + sendpos_, sendremaining_, MSG_NOSIGNAL
-    );
+    const ssize_t wr =
+        send(sock_, sendbuf_ + sendpos_, sendremaining_, MSG_NOSIGNAL);
 
-    if (wr < 0)  {
+    if (wr < 0) {
       const int err = errno;
       if (err == EAGAIN || err == EWOULDBLOCK) {
         // The socket buffer is full, so we need to wait for epoll
@@ -509,11 +448,9 @@ int DBusAuthHandler::process_write() noexcept {
 
       if (handler_) {
         char errmsg[128];
-        snprintf(
-          errmsg, sizeof(errmsg),
-          "Error in DBusAuthHandler::process_write(): %s",
-          strerror(err)
-        );
+        snprintf(errmsg, sizeof(errmsg),
+                 "Error in DBusAuthHandler::process_write(): %s",
+                 strerror(err));
         handler_->logerror(errmsg);
       }
 
@@ -529,7 +466,7 @@ int DBusAuthHandler::process_write() noexcept {
 int DBusAuthHandler::process_read() noexcept {
   while (true) {
     const ssize_t recvsize =
-      recv(sock_, recvbuf_ + recvpos_, sizeof(recvbuf_) - 1 - recvpos_, 0);
+        recv(sock_, recvbuf_ + recvpos_, sizeof(recvbuf_) - 1 - recvpos_, 0);
 
     if (recvsize == 0) {
       // Peer has closed the connection.
@@ -546,11 +483,8 @@ int DBusAuthHandler::process_read() noexcept {
 
       if (handler_) {
         char errmsg[128];
-        snprintf(
-          errmsg, sizeof(errmsg),
-          "Error in DBusAuthHandler::process_read(): %s",
-          strerror(err)
-        );
+        snprintf(errmsg, sizeof(errmsg),
+                 "Error in DBusAuthHandler::process_read(): %s", strerror(err));
         handler_->logerror(errmsg);
       }
 
@@ -575,10 +509,10 @@ int DBusAuthHandler::process_read() noexcept {
   }
 }
 
-EPollHandlerInterface* DBusAuthHandler::getNextHandler() noexcept {
+EPollHandlerInterface *DBusAuthHandler::getNextHandler() noexcept {
   // Make sure that nexthandler_ is zeroed out so that we don't own the
   // pointer anymore.
-  DBusHandler* h = nullptr;
+  DBusHandler *h = nullptr;
   std::swap(h, nexthandler_);
   return h;
 }

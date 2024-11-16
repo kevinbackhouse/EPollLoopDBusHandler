@@ -13,32 +13,34 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with EPollLoopDBusHandler.  If not, see <https://www.gnu.org/licenses/>.
+// along with EPollLoopDBusHandler.  If not, see
+// <https://www.gnu.org/licenses/>.
 
 #pragma once
 
 #include <EPollLoop.hpp>
 #include <dbus.hpp>
-#include <utils.hpp>
 #include <map>
 #include <queue>
+#include <utils.hpp>
 
 // epoll handler which parses incoming DBus messages.
 class DBusHandler : public EPollHandlerInterface {
 public:
-  typedef std::function<int(const DBusMessage& message, bool isError)> reply_cb_t;
+  typedef std::function<int(const DBusMessage &message, bool isError)>
+      reply_cb_t;
   typedef uint32_t serialNumber_t;
 
 private:
   class SendBuf final {
-    char* buf_;
+    char *buf_;
     size_t bufsize_;
     size_t pos_;
 
   public:
     SendBuf(size_t bufsize);
 
-    SendBuf(SendBuf&&);
+    SendBuf(SendBuf &&);
 
     // Calls `free(buf_)`.
     ~SendBuf();
@@ -47,12 +49,10 @@ private:
     size_t remaining() const noexcept { return bufsize_ - pos_; }
 
     // Get a pointer to the current position in the buffer.
-    char* curr() const noexcept { return buf_ + pos_; }
+    char *curr() const noexcept { return buf_ + pos_; }
 
     // Update `pos_` after receiving data.
-    void incr(const ssize_t sendsize) noexcept {
-      pos_ += sendsize;
-    }
+    void incr(const ssize_t sendsize) noexcept { pos_ += sendsize; }
   };
 
   serialNumber_t serialNumber_ = 0x1000;
@@ -81,20 +81,18 @@ private:
   std::map<serialNumber_t, reply_cb_t> reply_callbacks_;
 
 public:
-  explicit DBusHandler(AutoCloseFD&& fd) :
-    EPollHandlerInterface(fd.release()),
-    parse_(DBusMessage::parseLE(message_))
-  {}
+  explicit DBusHandler(AutoCloseFD &&fd)
+      : EPollHandlerInterface(fd.release()),
+        parse_(DBusMessage::parseLE(message_)) {}
 
-  explicit DBusHandler(const char* socketpath) :
-    EPollHandlerInterface(open_dbus_socket(socketpath)),
-    parse_(DBusMessage::parseLE(message_))
-  {}
+  explicit DBusHandler(const char *socketpath)
+      : EPollHandlerInterface(open_dbus_socket(socketpath)),
+        parse_(DBusMessage::parseLE(message_)) {}
 
   virtual ~DBusHandler();
 
   // Open a UNIX domain socket to connect to message bus.
-  static int open_dbus_socket(const char* socketpath);
+  static int open_dbus_socket(const char *socketpath);
 
 private:
   int init() noexcept override final;
@@ -104,10 +102,10 @@ private:
   int process_write() noexcept override final;
 
   // Wrapper around parse_message() that catches any exceptions.
-  int parse_message_noexcept(char* buf, size_t pos, size_t remaining) noexcept;
+  int parse_message_noexcept(char *buf, size_t pos, size_t remaining) noexcept;
 
   // Feeds the buffer into the message parser.
-  int parse_message(char* buf, size_t pos, size_t remaining);
+  int parse_message(char *buf, size_t pos, size_t remaining);
 
   // This is a helper method for process_read(). It is called when a
   // complete message has been received. (The message is stored in the
@@ -121,21 +119,21 @@ private:
 
   // Send the buffer. (If there is already a backlog of messages to send,
   // then it is added to sendqueue_.)
-  void sendbuf(SendBuf&& buf);
+  void sendbuf(SendBuf &&buf);
 
   // Serialize the message and send it.
-  void send_message(const DBusMessage& message);
+  void send_message(const DBusMessage &message);
 
 protected:
   // This is called when we receive an incoming METHOD_CALL message.
-  virtual void receive_call(const DBusMessage& call) = 0;
+  virtual void receive_call(const DBusMessage &call) = 0;
 
   // This is called when we receive an incoming signal.
-  virtual void receive_signal(const DBusMessage& sig) = 0;
+  virtual void receive_signal(const DBusMessage &sig) = 0;
 
   // This is called when we receive an incoming error that isn't a response
   // one of our method calls.
-  virtual void receive_error(const DBusMessage& err) = 0;
+  virtual void receive_error(const DBusMessage &err) = 0;
 
   // This is called after we have finished connecting to the dbus-daemon.
   virtual void accept() = 0;
@@ -148,38 +146,29 @@ protected:
 public:
   // This is used to emit error messages. It's a virtual function so
   // that you can implement it in the most appropriate way.
-  virtual void logerror(const char*) noexcept = 0;
+  virtual void logerror(const char *) noexcept = 0;
 
-  void send_call(
-    std::unique_ptr<DBusMessageBody>&& body,
-    std::string&& path,
-    std::string&& interface,
-    std::string&& destination,
-    std::string&& member,
-    reply_cb_t cb,
-    const MessageFlags flags = MSGFLAGS_EMPTY
-  );
+  void send_call(std::unique_ptr<DBusMessageBody> &&body, std::string &&path,
+                 std::string &&interface, std::string &&destination,
+                 std::string &&member, reply_cb_t cb,
+                 const MessageFlags flags = MSGFLAGS_EMPTY);
 
   void send_reply(
-    const uint32_t replySerialNumber, // serial number that we are replying to
-    std::unique_ptr<DBusMessageBody>&& body,
-    std::string&& destination
-  );
+      const uint32_t replySerialNumber, // serial number that we are replying to
+      std::unique_ptr<DBusMessageBody> &&body, std::string &&destination);
 
   void send_error_reply(
-    const uint32_t replySerialNumber, // serial number that we are replying to
-    std::string&& destination,
-    std::string&& errmsg
-  );
+      const uint32_t replySerialNumber, // serial number that we are replying to
+      std::string &&destination, std::string &&errmsg);
 
-  typedef std::function<int(const std::string&)> hello_cb_t;
+  typedef std::function<int(const std::string &)> hello_cb_t;
 
   // The hello message is always the first message that you have to send.
   // This is just a simple wrapper around send_call().
   void send_hello(hello_cb_t cb);
 
   // Only intended to be used by DBusAuthHandler.
-  int getSock() const {return sock_; }
+  int getSock() const { return sock_; }
 };
 
 // Before we can start sending D-Bus messages, we have to do the auth
@@ -193,8 +182,8 @@ class DBusAuthHandler : public EPollHandlerInterface {
   // The pointer is stored in `handler_` until auth is successful, then it
   // is transferred into `nexthandler_`, so that `getNextHandler()` will
   // only return the handler if auth is successful.
-  DBusHandler* handler_;
-  DBusHandler* nexthandler_ = nullptr;
+  DBusHandler *handler_;
+  DBusHandler *nexthandler_ = nullptr;
 
   // The total auth sequence only takes a few hundred bytes in each
   // direction, so it's sufficient to use two fixed-size buffers.
@@ -205,13 +194,9 @@ class DBusAuthHandler : public EPollHandlerInterface {
   size_t recvpos_ = 0;
 
 public:
-  DBusAuthHandler(
-    uid_t auth_uid, DBusHandler* handler
-  ) :
-    EPollHandlerInterface(handler->getSock()),
-    auth_uid_(auth_uid),
-    handler_(handler)
-  {}
+  DBusAuthHandler(uid_t auth_uid, DBusHandler *handler)
+      : EPollHandlerInterface(handler->getSock()), auth_uid_(auth_uid),
+        handler_(handler) {}
 
   ~DBusAuthHandler() {
     delete handler_;
@@ -225,5 +210,5 @@ private:
 
   int process_write() noexcept override final;
 
-  EPollHandlerInterface* getNextHandler() noexcept override final;
+  EPollHandlerInterface *getNextHandler() noexcept override final;
 };
